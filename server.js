@@ -75,15 +75,28 @@ const multer = require('multer');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
+//added for image
+const { v2: cloudinary } = require('cloudinary');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+
 
 dotenv.config();
+
+//added for image
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+
 const app = express();
 app.use(cors());
 app.use(express.json()); // needed for API parsing
-app.use(express.static('uploads'));
+//app.use(express.static('uploads'));
 
 // ✅ Serve static files from uploads folder under /uploads
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+//app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Connect MongoDB
 mongoose.connect(process.env.MONGO_URI)
@@ -104,21 +117,33 @@ const pixelSchema = new mongoose.Schema({
 const Pixel = mongoose.model('Pixel', pixelSchema);
 
 // Multer config
-const storage = multer.diskStorage({
-  destination: 'uploads/',
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1E9)}${ext}`;
-    cb(null, unique);
-  }
+// const storage = multer.diskStorage({
+//   destination: 'uploads/',
+//   filename: (req, file, cb) => {
+//     const ext = path.extname(file.originalname);
+//     const unique = `${Date.now()}-${Math.round(Math.random() * 1E9)}${ext}`;
+//     cb(null, unique);
+//   }
+// });
+// const upload = multer({ storage });
+
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'pixel-uploads',
+    allowed_formats: ['jpg', 'png', 'jpeg'],
+    transformation: [{ width: 300, height: 300, crop: 'limit' }],
+  },
 });
 const upload = multer({ storage });
+
 
 // ✅ POST /api/pixels → Upload pixel
 app.post('/api/pixels', upload.single('image'), async (req, res) => {
   try {
     const { name, email, link, tooltip, x, y } = req.body;
-    const imagePath = req.file.filename;
+    const imagePath = req.file.path; // This gives the full Cloudinary URL
+
 
      const xCoord = parseInt(x);
     const yCoord = parseInt(y);
@@ -200,13 +225,22 @@ app.get('/api/admin/pixels', async (req, res) => {
 //Remove a pixel ad from database (also optionally delete its image file).
 const fs = require('fs');
 
-app.delete('/api/admin/pixels/:id', async (req, res) => {
+/*app.delete('/api/admin/pixels/:id', async (req, res) => {
   try {
     const pixel = await Pixel.findByIdAndDelete(req.params.id);
     if (pixel && pixel.image) {
       const imagePath = path.join(__dirname, 'uploads', pixel.image);
       if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
     }
+    res.json({ msg: 'Pixel deleted' });
+  } catch (err) {
+    res.status(500).json({ msg: 'Failed to delete pixel' });
+  }
+});*/
+
+app.delete('/api/admin/pixels/:id', async (req, res) => {
+  try {
+    const pixel = await Pixel.findByIdAndDelete(req.params.id);
     res.json({ msg: 'Pixel deleted' });
   } catch (err) {
     res.status(500).json({ msg: 'Failed to delete pixel' });
